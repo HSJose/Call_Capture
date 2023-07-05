@@ -64,8 +64,8 @@ def run_script(device):
                   "appium:udid": device,
                   "appium:automationName": "uiautomator2",
                   "appium:platformName": "android",
-                  "appPackage": "com.android.settings",
-                  "appActivity": "com.android.settings.Settings",
+                  "appium:appPackage": "com.android.settings",
+                  "appium:appActivity": "com.android.settings.Settings",
                   "headspin:controlLock": True,
                   "headspin:resetUiAutomator2": True,
                   "appium:newCommandTimeout": 200
