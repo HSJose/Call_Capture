@@ -1,45 +1,111 @@
 #!/usr/bin/env python3
 
 from appium import webdriver
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 from datetime import datetime
-import time
+from os import getenv
+from time import sleep
+import json
+import requests
 import concurrent.futures
 
-# Initialize a Slack client
-slack_client = WebClient(token='YOUR_SLACK_TOKEN')
+# API Setup
+API_KEY = getenv('HEADSPIN_SANDBOX')
+API_URL = f'https://{API_KEY}@api-dev.headspin.io'
+HEADER = {'Authorization': f'Bearer {API_KEY}'}
 
 # List of devices
-devices = ['device1', 'device2', 'device3', 'device4', 'device5', 'device6', 'device7', 'device8', 'device9', 'device10']
+devices = ['R5CN20T5YYV', 'R58M33V7JGY', '9B061FFAZ00ENN']
+
+
+def log(device_id, message) -> None:
+    if device_id:
+        print(f'{datetime.now()} {device_id}: {message}')
+    else:
+        print(f'{datetime.now()} : {message}')
+
+
+def unlock_device(device_id) -> str:
+        '''
+        make unlock device api call
+        '''
+        lock_device_url = f'{API_URL}/v0/devices/unlock'
+        lock_device_data = json.dumps({"device_id": device_id})
+
+        device_unlocked = False
+        max_retries = 5
+        retries = 0
+
+        while not device_unlocked and retries < max_retries:
+            try:
+                r = requests.post(url=lock_device_url, headers=HEADER, data=lock_device_data)
+                reply = r.json()
+                if reply["statuses"][0]["message"] == 'Device unlocked.':
+                    device_unlocked = True
+                elif reply["statuses"][0]["message"] == 'Device is already unlocked.':
+                    if retries + 1 < max_retries:
+                        raise Exception('Device is already unlocked.')
+                    else:
+                        device_unlocked = True
+            except Exception as e:
+                log(device_id, f'Error releasing device: {e}')
+                retries += 1
+                sleep(5)  # Wait for 5 seconds before retrying
+
 
 def run_script(device):
-    for i in range(3):
-        try:
-            # Connect to the device
-            CAPABILITIES['deviceName'] = device
-            APPIUM_DRIVER = webdriver.Remote('http://localhost:4723/wd/hub', CAPABILITIES)
+    while True:
+        for i in range(3):
+            try:
+                # Connect to the device
 
-            # Check if device is available
-            if APPIUM_DRIVER.is_device_locked():
-                raise Exception('Device is locked')
+                WD_ENDPOINT = f'https://appium-dev.headspin.io:443/v0/{API_KEY}/wd/hub'
 
-            # Run the script
-            # Add your script here
+                CAPABILITIES = {
+                  "appium:udid": device,
+                  "appium:automationName": "uiautomator2",
+                  "appium:platformName": "android",
+                  "appPackage": "com.android.settings",
+                  "appActivity": "com.android.settings.Settings",
+                  "headspin:controlLock": True,
+                  "headspin:resetUiAutomator2": True,
+                  "appium:newCommandTimeout": 200
+                }
+                
+                # Start driver
+                try:
+                  log(device, 'Appium Starting')
+                  APPIUM_DRIVER = webdriver.Remote(WD_ENDPOINT, CAPABILITIES)
+                  log(device, 'Appium Started')
+                except Exception as E:
+                  # If an error occurred, raise a custom exception
+                  print(f'Error: {E}')
+                  raise AssertionError('Failed to start Appium driver') from E
 
-            # If the script is successfully run, break the loop
-            break
-        except Exception as e:
-            # If an error occurred, sleep for a while and then retry
-            print(f'Attempt {i+1} failed for device {device}, retrying...')
-            time.sleep(5)
-    else:
-        # If the script failed to run after 3 attempts, send a notification to Slack
-        message = f'Script failed to run on device {device} after 3 attempts. Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
-        try:
-            response = slack_client.chat_postMessage(channel='YOUR_SLACK_CHANNEL', text=message)
-        except SlackApiError as e:
-            print(f"Error sending message to Slack: {e.response['error']}")
+                # Run the script
+                log(device, 'Sleeping for 15')
+                sleep(15)
+                
+                # If the script is successfully run, break the loop
+                break
+            except AssertionError as AE:
+                print(f'Attempt {i+1} failed for device {device}, force unlocking device and retrying...')
+                unlock_device(device)
+                continue
+            
+            except Exception as E:
+                # If an error occurred, sleep for a while and then retry
+                print(f'Attempt {i+1} failed for device {device}, retrying...')
+                sleep(5)
+
+            finally:
+                log(device, 'We now end the driver session')
+                APPIUM_DRIVER.quit()
+        else:
+            # If the script failed to run after 3 attempts, print a message
+            print(f'Script failed to run on device {device} after 3 attempts. Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+
+        # Sleep for a while before running the script again
+        sleep(5)
 
 # Run the script on all devices in parallel
 with concurrent.futures.ThreadPoolExecutor() as executor:
