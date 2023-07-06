@@ -131,6 +131,8 @@ def run_script(device):
 
         # Sleep for a while before running the script again
         sleep(5)
+    
+    log(device, 'YOU HAVE ENDED THE LOOP')
 
 
 # Run the script on all devices in parallel
