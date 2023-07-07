@@ -1,5 +1,5 @@
 import { remote } from 'webdriverio';
-import fetch from 'node-fetch';
+import axios from 'axios';
 import fs from 'fs';
 import { promisify } from 'util';
 import { join } from 'path';
@@ -37,7 +37,7 @@ const unlockDevice = async (device) => {
 
     while (!deviceUnlocked && retries < maxRetries) {
         try {
-            const res = await fetch(lockDeviceUrl, { method: 'POST', headers: HEADER, body: lockDeviceData });
+            const res = await axios.post(lockDeviceUrl, lockDeviceData, { headers: HEADER });
             const reply = await res.json();
             if (reply["statuses"][0]["message"] === 'Device unlocked.') {
                 deviceUnlocked = true;
@@ -74,7 +74,7 @@ const runScript = async (device) => {
 
                 log(device, 'Appium Starting');
                 client = await remote({
-                    logLevel: 'silent',
+                    logLevel: 'error',
                     path: device['WD_ENDPOINT'],
                     capabilities
                 });
