@@ -1,10 +1,11 @@
-const webdriverio = require('webdriverio');
-const fetch = require('node-fetch');
-const fs = require('fs');
-const { promisify } = require('util');
-const path = require('path');
+import { remote } from 'webdriverio';
+import fetch from 'node-fetch';
+import fs from 'fs';
+import { promisify } from 'util';
+import { join } from 'path';
+import pLimit from 'p-limit';
+
 const sleep = promisify(setTimeout);
-const pLimit = require('p-limit');
 
 const API_KEY = process.env['HEADSPIN_SANDBOX'];
 const API_URL = `https://${API_KEY}@api-dev.headspin.io`;
@@ -21,7 +22,7 @@ const log = (device, message) => {
     if (!fs.existsSync('device logs')) {
         fs.mkdirSync('device logs');
     }
-    const logPath = path.join('device logs', `${deviceId}.log`);
+    const logPath = join('device logs', `${deviceId}.log`);
     fs.appendFileSync(logPath, `${new Date().toISOString()} : ${message}\n`);
 };
 
@@ -72,7 +73,7 @@ const runScript = async (device) => {
                 };
 
                 log(device, 'Appium Starting');
-                client = await webdriverio.remote({
+                client = await remote({
                     logLevel: 'silent',
                     path: device['WD_ENDPOINT'],
                     capabilities
@@ -87,15 +88,17 @@ const runScript = async (device) => {
                 await unlockDevice(device);
             } finally {
                 log(device, 'We now end the driver session');
-                await client.deleteSession();
+                if (client) {
+                    await client.deleteSession();
+                }
             }
         }
         log(device, `Script failed to run after 3 attempts. Timestamp: ${new Date().toISOString()}`);
         await sleep(5000);
     }
-    log(device, 'YOU HAVE ENDED THE LOOP');
 };
 
+const concurrency = 3; 
 const limit = pLimit(concurrency);
 const tasks = devices.map(device => limit(() => runScript(device)));
 
