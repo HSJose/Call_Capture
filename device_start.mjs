@@ -38,7 +38,7 @@ const unlockDevice = async (device) => {
     while (!deviceUnlocked && retries < maxRetries) {
         try {
             const res = await axios.post(lockDeviceUrl, lockDeviceData, { headers: HEADER });
-            const reply = await res.json();
+            const reply = await res.data;
             if (reply["statuses"][0]["message"] === 'Device unlocked.') {
                 deviceUnlocked = true;
             } else if (reply["statuses"][0]["message"] === 'Device is already unlocked.') {
@@ -58,32 +58,43 @@ const unlockDevice = async (device) => {
 
 const runScript = async (device) => {
     while (true) {
+        let scriptSuccess = false;
         for (let i = 0; i < 3; i++) {
             let client;
             try {
                 const capabilities = {
-                    "udid": device['UDID'],
-                    "automationName": "uiautomator2",
+                    "appium:udid": device['UDID'],
+                    "appium:automationName": "uiautomator2",
                     "platformName": "android",
-                    "appPackage": "com.android.settings",
-                    "appActivity": "com.android.settings.Settings",
+                    "appium:appPackage": "com.android.settings",
+                    "appium:appActivity": "com.android.settings.Settings",
                     "headspin:controlLock": true,
                     "headspin:resetUiAutomator2": true,
-                    "newCommandTimeout": 200
+                    "headspin:newCommandTimeout": 200
                 };
 
+
                 log(device, 'Appium Starting');
-                client = await remote({
+
+                const endpoint = new URL(device['WD_ENDPOINT']);
+
+                log(device, client = await remote({
                     logLevel: 'error',
-                    path: device['WD_ENDPOINT'],
+                    protocol: endpoint.protocol.slice(0, -1), // Remove trailing ':'
+                    hostname: endpoint.hostname,
+                    port: Number(endpoint.port),
+                    path: endpoint.pathname,
                     capabilities
-                });
+                }));
+
                 log(device, 'Appium Started');
 
                 log(device, 'Sleeping for 15');
                 await sleep(15000);
+                scriptSuccess = true;
                 break;
             } catch (E) {
+                log(device, E)
                 log(device, `Attempt ${i+1} failed, force unlocking device and retrying...`);
                 await unlockDevice(device);
             } finally {
@@ -93,12 +104,14 @@ const runScript = async (device) => {
                 }
             }
         }
-        log(device, `Script failed to run after 3 attempts. Timestamp: ${new Date().toISOString()}`);
+        if (!scriptSuccess) {
+            log(device, `Script failed to run after 3 attempts. Timestamp: ${new Date().toISOString()}`);
+        }
         await sleep(5000);
     }
 };
 
-const concurrency = 3; 
+const concurrency = 3; // Number of devices to run in parallel 
 const limit = pLimit(concurrency);
 const tasks = devices.map(device => limit(() => runScript(device)));
 
